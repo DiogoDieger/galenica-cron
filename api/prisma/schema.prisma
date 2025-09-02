@@ -1,0 +1,406 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Supply {
+  id              String                 @id @default(cuid())
+  name            String
+  unit            String
+  currentStock    Decimal                @db.Decimal(10, 3)
+  minimumStock    Decimal?               @db.Decimal(10, 3)
+  unitCost        Decimal?               @db.Decimal(10, 2)
+  supplier        String?
+  status          SupplyStatus           @default(ACTIVE)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  compositions    ProductComposition[]
+  productionItems ProductionSupplyItem[]
+
+  @@map("supplies")
+}
+
+model ProductComposition {
+  id              String         @id @default(cuid())
+  productId       String         @map("product_id")
+  supplyId        String         @map("supply_id")
+  quantityPerUnit Decimal        @db.Decimal(10, 3)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  unit            String
+  product         MagentoProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supply          Supply         @relation(fields: [supplyId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, supplyId])
+  @@index([supplyId])
+  @@map("product_compositions")
+}
+
+model Production {
+  id                 String                 @id @default(cuid())
+  productId          String                 @map("product_id")
+  quantity           Int
+  totalCost          Decimal?               @db.Decimal(10, 2)
+  notes              String?                @db.Text
+  status             ProductionStatus       @default(PENDING)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  magento_sync_error String?                @db.Text
+  magento_synced_at  DateTime?
+  sync_to_magento    Boolean                @default(false)
+  supplyItems        ProductionSupplyItem[]
+  product            MagentoProduct         @relation(fields: [productId], references: [id])
+
+  @@index([productId])
+  @@index([status])
+  @@index([sync_to_magento])
+  @@map("productions")
+}
+
+model ProductionSupplyItem {
+  id           String     @id @default(cuid())
+  productionId String     @map("production_id")
+  supplyId     String     @map("supply_id")
+  quantityUsed Decimal    @db.Decimal(10, 3)
+  unitCost     Decimal?   @db.Decimal(10, 2)
+  totalCost    Decimal?   @db.Decimal(10, 2)
+  createdAt    DateTime   @default(now())
+  production   Production @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  supply       Supply     @relation(fields: [supplyId], references: [id])
+
+  @@unique([productionId, supplyId])
+  @@index([supplyId])
+  @@map("production_supply_items")
+}
+
+model Customer {
+  id           String   @id @default(cuid())
+  customerId   String   @unique @map("customer_id")
+  createdAt    DateTime @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  incrementId  String?  @map("increment_id")
+  storeId      String?  @map("store_id")
+  websiteId    String?  @map("website_id")
+  createdIn    String?  @map("created_in")
+  email        String   @unique
+  firstname    String
+  middlename   String?
+  lastname     String
+  groupId      String?  @map("group_id")
+  prefix       String?
+  suffix       String?
+  dob          String?
+  taxvat       String?
+  confirmation String?
+  passwordHash String?  @map("password_hash")
+  syncedAt     DateTime @default(now()) @map("synced_at")
+  orders       Order[]
+
+  @@index([email])
+  @@index([groupId])
+  @@index([customerId])
+  @@map("customers")
+}
+
+model Order {
+  id          String   @id @default(cuid())
+  orderId     String?  @map("order_id")
+  incrementId String   @unique @map("increment_id")
+  parentId    String?  @map("parent_id")
+  storeId     String?  @map("store_id")
+  createdAt   DateTime @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  isActive    String?  @map("is_active")
+  customerId  String?  @map("customer_id")
+
+  // Valores monetários (mantendo compatibilidade com dados existentes)
+  taxAmount            Decimal? @map("tax_amount") @db.Decimal(10, 2)
+  shippingAmount       Decimal? @map("shipping_amount") @db.Decimal(10, 2)
+  discountAmount       Decimal? @map("discount_amount") @db.Decimal(10, 2)
+  subtotal             Decimal? @db.Decimal(10, 2)
+  grandTotal           Decimal  @map("grand_total") @db.Decimal(10, 2)
+  totalPaid            Decimal? @map("total_paid") @db.Decimal(10, 2)
+  totalRefunded        Decimal? @map("total_refunded") @db.Decimal(10, 2)
+  totalQtyOrdered      Int?     @map("total_qty_ordered")
+  totalCanceled        Decimal? @map("total_canceled") @db.Decimal(10, 2)
+  totalInvoiced        Decimal? @map("total_invoiced") @db.Decimal(10, 2)
+  totalOnlineRefunded  Decimal? @map("total_online_refunded") @db.Decimal(10, 2)
+  totalOfflineRefunded Decimal? @map("total_offline_refunded") @db.Decimal(10, 2)
+
+  // Valores base
+  baseTaxAmount            Decimal? @map("base_tax_amount") @db.Decimal(10, 2)
+  baseShippingAmount       Decimal? @map("base_shipping_amount") @db.Decimal(10, 2)
+  baseDiscountAmount       Decimal? @map("base_discount_amount") @db.Decimal(10, 2)
+  baseSubtotal             Decimal? @map("base_subtotal") @db.Decimal(10, 2)
+  baseGrandTotal           Decimal? @map("base_grand_total") @db.Decimal(10, 2)
+  baseTotalPaid            Decimal? @map("base_total_paid") @db.Decimal(10, 2)
+  baseTotalRefunded        Decimal? @map("base_total_refunded") @db.Decimal(10, 2)
+  baseTotalQtyOrdered      Decimal? @map("base_total_qty_ordered") @db.Decimal(10, 2)
+  baseTotalCanceled        Decimal? @map("base_total_canceled") @db.Decimal(10, 2)
+  baseTotalInvoiced        Decimal? @map("base_total_invoiced") @db.Decimal(10, 2)
+  baseTotalOnlineRefunded  Decimal? @map("base_total_online_refunded") @db.Decimal(10, 2)
+  baseTotalOfflineRefunded Decimal? @map("base_total_offline_refunded") @db.Decimal(10, 2)
+
+  // Endereços
+  billingAddressId  String? @map("billing_address_id")
+  billingFirstname  String? @map("billing_firstname")
+  billingLastname   String? @map("billing_lastname")
+  shippingAddressId String? @map("shipping_address_id")
+  shippingFirstname String? @map("shipping_firstname")
+  shippingLastname  String? @map("shipping_lastname")
+  billingName       String? @map("billing_name")
+  shippingName      String? @map("shipping_name")
+
+  // Taxas de conversão
+  storeToBaseRate  Decimal? @map("store_to_base_rate") @db.Decimal(12, 4)
+  storeToOrderRate Decimal? @map("store_to_order_rate") @db.Decimal(12, 4)
+  baseToGlobalRate Decimal? @map("base_to_global_rate") @db.Decimal(12, 4)
+  baseToOrderRate  Decimal? @map("base_to_order_rate") @db.Decimal(12, 4)
+
+  // Informações gerais
+  weight         Decimal?    @db.Decimal(8, 2)
+  storeName      String?     @map("store_name")
+  remoteIp       String?     @map("remote_ip")
+  status         OrderStatus @default(PENDING)
+  state          String?
+  appliedRuleIds String?     @map("applied_rule_ids")
+
+  // Moedas
+  globalCurrencyCode String? @map("global_currency_code")
+  baseCurrencyCode   String? @map("base_currency_code")
+  storeCurrencyCode  String? @map("store_currency_code")
+  orderCurrencyCode  String? @map("order_currency_code")
+
+  // Envio
+  shippingMethod      String? @map("shipping_method")
+  shippingDescription String? @map("shipping_description")
+
+  // Cliente
+  customerEmail      String  @map("customer_email")
+  customerFirstname  String  @map("customer_firstname")
+  customerLastname   String  @map("customer_lastname")
+  quoteId            String? @map("quote_id")
+  isVirtual          String? @map("is_virtual")
+  customerGroupId    String? @map("customer_group_id")
+  customerNoteNotify String? @map("customer_note_notify")
+  customerIsGuest    String? @map("customer_is_guest")
+  emailSent          String? @map("email_sent")
+
+  // Gift e outros
+  giftMessageId String? @map("gift_message_id")
+  giftMessage   String? @map("gift_message")
+
+  // Campos adicionais para endereços detalhados (do salesOrderInfo)
+  billingCity       String? @map("billing_city")
+  billingCountryId  String? @map("billing_country_id")
+  billingPostcode   String? @map("billing_postcode")
+  billingRegion     String? @map("billing_region")
+  billingStreet     String? @map("billing_street")
+  billingTelephone  String? @map("billing_telephone")
+  shippingCity      String? @map("shipping_city")
+  shippingCountryId String? @map("shipping_country_id")
+  shippingPostcode  String? @map("shipping_postcode")
+  shippingRegion    String? @map("shipping_region")
+  shippingStreet    String? @map("shipping_street")
+  shippingTelephone String? @map("shipping_telephone")
+
+  // Campos de controle
+  syncedAt         DateTime  @default(now()) @map("synced_at")
+  detailsFetched   Boolean   @default(false) @map("details_fetched")
+  detailsFetchedAt DateTime? @map("details_fetched_at")
+  shippingCompany           String?  @map("shipping_company")
+  shippingRegionId          Int?     @map("shipping_region_id")
+  shippingIsDefaultBilling  Boolean? @map("shipping_is_default_billing")
+  shippingIsDefaultShipping Boolean? @map("shipping_is_default_shipping")
+  shippingAddressUpdatedAt  DateTime? @map("shipping_address_updated_at")
+
+  // Relacionamentos
+  customer Customer?   @relation(fields: [customerId], references: [customerId])
+  items    OrderItem[]
+
+  @@index([incrementId])
+  @@index([customerId])
+  @@index([customerEmail])
+  @@index([status])
+  @@index([createdAt])
+  @@index([syncedAt])
+  @@index([detailsFetched])
+  @@map("orders")
+}
+
+model OrderItem {
+  id              String   @id @default(cuid())
+  orderId         String   @map("order_id")
+  itemId          String?  @map("item_id")
+  productId       String?  @map("product_id")
+  sku             String?
+  name            String
+  description     String?  @db.Text
+  weight          Decimal? @db.Decimal(8, 2)
+  qty             Decimal  @db.Decimal(10, 2)
+  price           Decimal  @db.Decimal(10, 2)
+  basePrice       Decimal? @map("base_price") @db.Decimal(10, 2)
+  originalPrice   Decimal? @map("original_price") @db.Decimal(10, 2)
+  taxAmount       Decimal? @map("tax_amount") @db.Decimal(10, 2)
+  taxPercent      Decimal? @map("tax_percent") @db.Decimal(5, 2)
+  discountAmount  Decimal? @map("discount_amount") @db.Decimal(10, 2)
+  discountPercent Decimal? @map("discount_percent") @db.Decimal(5, 2)
+  rowTotal        Decimal? @map("row_total") @db.Decimal(10, 2)
+  baseRowTotal    Decimal? @map("base_row_total") @db.Decimal(10, 2)
+  productType     String?  @map("product_type")
+  qtyOrdered      Decimal? @map("qty_ordered") @db.Decimal(10, 2)
+  qtyShipped      Decimal? @map("qty_shipped") @db.Decimal(10, 2)
+  qtyInvoiced     Decimal? @map("qty_invoiced") @db.Decimal(10, 2)
+  qtyCanceled     Decimal? @map("qty_canceled") @db.Decimal(10, 2)
+  qtyRefunded     Decimal? @map("qty_refunded") @db.Decimal(10, 2)
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  // Relacionamento
+  order Order @relation(fields: [orderId], references: [incrementId], onDelete: Cascade)
+
+  @@unique([orderId, itemId])
+  @@index([orderId])
+  @@index([productId])
+  @@index([sku])
+  @@map("order_items")
+}
+
+model MagentoProduct {
+  id               String               @id @default(cuid())
+  productId        String               @unique @map("product_id")
+  sku              String               @unique
+  name             String
+  description      String?              @db.Text
+  shortDescription String?              @map("short_description") @db.Text
+  price            Decimal              @db.Decimal(10, 2)
+  specialPrice     Decimal?             @map("special_price") @db.Decimal(10, 2)
+  cost             Decimal?             @db.Decimal(10, 2)
+  weight           Decimal?             @db.Decimal(8, 3)
+  qty              Decimal              @db.Decimal(10, 3)
+  isInStock        Boolean              @map("is_in_stock")
+  manageStock      Boolean?             @map("manage_stock")
+  minQty           Decimal?             @map("min_qty") @db.Decimal(10, 3)
+  maxQty           Decimal?             @map("max_qty") @db.Decimal(10, 3)
+  stockStatus      String?              @map("stock_status")
+  status           MagentoProductStatus @default(ENABLED)
+  visibility       String?
+  typeId           String?              @map("type_id")
+  attributeSetId   String?              @map("attribute_set_id")
+  categoryIds      String?              @map("category_ids")
+  categories       String?              @db.Text
+  imageUrl         String?              @map("image_url")
+  smallImageUrl    String?              @map("small_image_url")
+  thumbnailUrl     String?              @map("thumbnail_url")
+  batch            String?
+  expiryDate       String?              @map("expiry_date")
+  manufacturer     String?
+  activeIngredient String?              @map("active_ingredient")
+  dosage           String?
+  metaTitle        String?              @map("meta_title")
+  metaDescription  String?              @map("meta_description")
+  urlKey           String?              @map("url_key")
+  createdAt        DateTime             @default(now()) @map("created_at")
+  updatedAt        DateTime             @updatedAt @map("updated_at")
+  syncedAt         DateTime             @default(now()) @map("synced_at")
+
+  // Campos para produção
+  isProducible       Boolean   @default(false) @map("is_producible") // Se o produto pode ser produzido
+  productionLeadTime Int?      @map("production_lead_time") // Tempo de produção em dias
+  productionCost     Decimal?  @map("production_cost") @db.Decimal(10, 2) // Custo de produção
+  productionNotes    String?   @map("production_notes") @db.Text // Notas de produção
+  lastProductionDate DateTime? @map("last_production_date") // Última produção
+  totalProduced      Decimal   @default(0) @map("total_produced") @db.Decimal(10, 3) // Total produzido
+
+  // Relações
+  compositions    ProductComposition[]
+  productions     Production[]
+  productionNeeds ProductionNeed[]
+
+  @@index([sku])
+  @@index([productId])
+  @@index([status])
+  @@index([isInStock])
+  @@index([categoryIds])
+  @@index([syncedAt])
+  @@index([isProducible])
+  @@index([lastProductionDate])
+  @@map("magento_products")
+}
+
+model ProductionNeed {
+  id             String                 @id @default(cuid())
+  productId      String                 @map("product_id")
+  currentStock   Decimal                @map("current_stock") @db.Decimal(10, 3)
+  minimumStock   Decimal                @map("minimum_stock") @db.Decimal(10, 3)
+  neededQuantity Decimal                @map("needed_quantity") @db.Decimal(10, 3)
+  priority       ProductionNeedPriority @default(MEDIUM)
+  calculatedAt   DateTime               @default(now()) @map("calculated_at")
+  isResolved     Boolean                @default(false) @map("is_resolved")
+  resolvedAt     DateTime?              @map("resolved_at")
+  notes          String?                @db.Text
+  product        MagentoProduct         @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([calculatedAt])
+  @@index([productId])
+  @@index([isResolved])
+  @@index([priority])
+  @@map("production_needs")
+}
+
+model BlingToken {
+  id           Int      @id @default(autoincrement())
+  accessToken  String
+  refreshToken String
+  expiresIn    Int
+  tokenType    String
+  scope        String?  @db.LongText
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+enum SupplyStatus {
+  ACTIVE
+  INACTIVE
+  OUT_OF_STOCK
+}
+
+enum ProductionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  COMPLETE
+  CANCELED
+  CLOSED
+  REFUNDED
+  HOLDED
+  PAYMENT_REVIEW
+}
+
+enum MagentoProductStatus {
+  ENABLED
+  DISABLED
+}
+
+enum ProductionNeedPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+model User {
+  id      Int      @id @default(autoincrement())
+  email   String     @unique
+  password String
+}
