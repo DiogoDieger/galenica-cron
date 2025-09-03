@@ -6,6 +6,7 @@ import {
   syncAllOrdersShippingAddressesSingleSession,
   updateAddressAndSyncOrders,
 } from "../services/updateAddres.js";
+import { syncAllOrderInfos } from "../services/syncOrderInfo.js";
 
 const router = Router();
 
@@ -79,4 +80,26 @@ router.post("/orders/sync-shipping/all-single-session", async (req, res) => {
   }
 });
 
+router.post("/orders/sync-info", async (req, res) => {
+  try {
+    const onlyMissing = req.query.onlyMissing !== "false"; // default true
+    const limit = req.query.limit ? parseInt(String(req.query.limit)) : 200;
+    const concurrency = req.query.concurrency
+      ? parseInt(String(req.query.concurrency))
+      : 5;
+
+    console.log(
+      `[HTTP] /orders/sync-info onlyMissing=${onlyMissing} limit=${limit} concurrency=${concurrency}`
+    );
+
+    const result = await syncAllOrderInfos({ onlyMissing, limit, concurrency });
+
+    return res.json(result);
+  } catch (e: any) {
+    console.error("[/orders/sync-info] UNCAUGHT:", e);
+    return res
+      .status(500)
+      .json({ success: false, error: e?.message || "internal" });
+  }
+});
 export default router;
