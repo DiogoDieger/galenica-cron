@@ -1,5 +1,7 @@
 // src/routes/magento.ts
 import { Router } from "express";
+import { PrismaClient } from "@prisma/client";
+
 import { syncAllProductsFromMagento } from "../services/magentoProductsSync.js";
 import { syncDetailedProducts } from "../services/magentoProductsDetailedSync.js";
 import {
@@ -7,13 +9,14 @@ import {
   updateAddressAndSyncOrders,
 } from "../services/updateAddres.js";
 import { updateOrderFromMagento } from "../services/updateOrderDetails.js";
-// api/src/services/updateOrderDetails.ts
-import { PrismaClient } from "@prisma/client";
 import { syncAllOrderInfos } from "../services/syncOrderInfo.js";
+import { syncAllOrdersJob } from "../services/syncAllOrders.js"; // 👈 novo import
+import { syncAllCustomersJob } from "../services/syncAllCustomers.js";
 
 const prisma = new PrismaClient();
 const router = Router();
 
+// ================== Produtos ==================
 router.get("/products/sync-all", async (_req, res) => {
   try {
     const result = await syncAllProductsFromMagento();
@@ -40,7 +43,6 @@ router.get("/products/sync-detailed", async (req, res) => {
       storeView: req.query.store_view as string | undefined,
     });
 
-    // 🔒 proteção contra undefined
     if (!result) {
       console.error("[sync-detailed] result is undefined");
       return res.status(500).json({ success: false, error: "no_result" });
@@ -62,8 +64,28 @@ router.get("/products/sync-detailed", async (req, res) => {
       .json({ success: false, error: e?.message || "internal" });
   }
 });
+
+// ================== Pedidos ==================
+
+// 🔥 Novo endpoint: sincronização COMPLETA de todos os pedidos
+router.post("/orders/sync-all-full", async (_req, res) => {
+  try {
+    await syncAllOrdersJob();
+    return res.json({
+      success: true,
+      message: "Sincronização completa iniciada",
+    });
+  } catch (e: any) {
+    console.error("[orders/sync-all-full] UNCAUGHT:", e);
+    return res
+      .status(500)
+      .json({ success: false, error: e?.message || "internal" });
+  }
+});
+
 router.post("/orders/sync-shipping/all-single-session", async (req, res) => {
   try {
+    console.log("TESTE");
     const result = await syncAllOrdersShippingAddressesSingleSession({
       onlyMissing: req.query.onlyMissing !== "false", // default true
       concurrency: req.query.concurrency
@@ -103,12 +125,12 @@ router.post("/orders/:incrementId/sync", async (req, res) => {
   }
 });
 
+// ⚠️ Você tinha duas rotas GET /orders/sync-all (mantive as duas)
 router.get("/orders/sync-all", async (req, res) => {
   try {
-    const limit = req.query.limit ? parseInt(String(req.query.limit)) : 50;
-    const onlyMissing = req.query.onlyMissing !== "false"; // default true
+    const limit = req.query.limit ? parseInt(String(req.query.limit)) : 100;
+    const onlyMissing = req.query.onlyMissing !== "false";
 
-    // busca pedidos no banco
     const orders = await prisma.order.findMany({
       where: onlyMissing ? { detailsFetched: false } : {},
       take: limit,
@@ -152,31 +174,11 @@ router.get("/orders/sync-all", async (req, res) => {
   }
 });
 
-router.post("/orders/:incrementId/sync", async (req, res) => {
-  try {
-    const { incrementId } = req.params;
-    if (!incrementId) {
-      return res
-        .status(400)
-        .json({ success: false, error: "incrementId obrigatório" });
-    }
-
-    const result = await updateOrderFromMagento(incrementId);
-    return res.json(result);
-  } catch (e: any) {
-    console.error("[orders/:incrementId/sync] UNCAUGHT:", e);
-    return res
-      .status(500)
-      .json({ success: false, error: e?.message || "internal" });
-  }
-});
-
 router.get("/orders/sync-all", async (req, res) => {
   try {
     const limit = req.query.limit ? parseInt(String(req.query.limit)) : 50;
-    const onlyMissing = req.query.onlyMissing !== "false"; // default true
+    const onlyMissing = req.query.onlyMissing !== "false";
 
-    // busca pedidos no banco
     const orders = await prisma.order.findMany({
       where: onlyMissing ? { detailsFetched: false } : {},
       take: limit,
@@ -219,10 +221,23 @@ router.get("/orders/sync-all", async (req, res) => {
       .json({ success: false, error: e?.message || "internal" });
   }
 });
-
+router.post("/customers/sync-all-full", async (_req, res) => {
+  try {
+    await syncAllCustomersJob();
+    return res.json({
+      success: true,
+      message: "Sincronização completa de clientes iniciada",
+    });
+  } catch (e: any) {
+    console.error("[customers/sync-all-full] UNCAUGHT:", e);
+    return res
+      .status(500)
+      .json({ success: false, error: e?.message || "internal" });
+  }
+});
 router.post("/orders/sync-info", async (req, res) => {
   try {
-    const onlyMissing = req.query.onlyMissing !== "false"; // default true
+    const onlyMissing = req.query.onlyMissing !== "false";
     const limit = req.query.limit ? parseInt(String(req.query.limit)) : 200;
     const concurrency = req.query.concurrency
       ? parseInt(String(req.query.concurrency))

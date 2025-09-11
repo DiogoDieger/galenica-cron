@@ -125,6 +125,7 @@ async function getCustomerAddressInfo(
   sessionId: string,
   addressId: string | number
 ): Promise<MagentoAddress> {
+  console.log(sessionId, addressId);
   const req = `<?xml version="1.0" encoding="UTF-8"?>
   <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:Magento">
     <soapenv:Body>
@@ -154,7 +155,7 @@ async function getCustomerAddressInfo(
 
   const blockMatch = text.match(/<info[^>]*>([\s\S]*?)<\/info>/i);
   const block = blockMatch ? blockMatch[1] : text;
-
+  console.log(text);
   const addr: MagentoAddress = {
     customer_address_id: extractTag(block, "customer_address_id"),
     created_at: extractTag(block, "created_at"),
@@ -257,16 +258,18 @@ export async function syncAllOrdersShippingAddressesSingleSession(options?: {
   concurrency?: number; // default: 5
   retries?: number; // default: 2
 }) {
+  console.log("TESTE 2");
   requiredEnv();
   const {
-    onlyMissing = true,
+    onlyMissing = false,
     updatedBefore,
     concurrency = 5,
     retries = 2,
   } = options ?? {};
 
-  // 1) gerar UM sessionId
   const sessionId = await getMagentoSession();
+
+  console.log("TESTE 3", sessionId);
 
   // 2) pegar IDs distintos
   const groups = await prisma.order.groupBy({
@@ -296,6 +299,8 @@ export async function syncAllOrdersShippingAddressesSingleSession(options?: {
     },
     _count: { _all: true },
   });
+
+  console.log("TESTE 4", groups);
 
   const ids = groups
     .map((g) => g.shippingAddressId)

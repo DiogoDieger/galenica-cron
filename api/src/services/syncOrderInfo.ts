@@ -72,14 +72,40 @@ async function getMagentoSession(): Promise<string> {
   throw new Error("Não foi possível extrair sessionId do login SOAP");
 }
 
+/** ─────────── Regex helpers (tolerantes a namespace) ─────────── */
 function extractXmlValue(xml: string, tag: string): string | null {
-  const m = xml.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, "i"));
+  // aceita <tag> ... </tag> e <ns:tag> ... </ns:tag>
+  const re = new RegExp(
+    `<(?:\\w+:)?${tag}[^>]*>([\\s\\S]*?)<\\/(?:\\w+:)?${tag}>`,
+    "i"
+  );
+  const m = xml.match(re);
   return m ? m[1].trim() : null;
 }
 
 function extractBlocks(xml: string, tag: string): string[] {
-  const re = new RegExp(`<${tag}[^>]*>[\\s\\S]*?<\\/${tag}>`, "gi");
+  // retorna blocos inteiros da tag, com ou sem namespace
+  const re = new RegExp(
+    `<(?:\\w+:)?${tag}[^>]*>[\\s\\S]*?<\\/(?:\\w+:)?${tag}>`,
+    "gi"
+  );
   return xml.match(re) || [];
+}
+
+/** Concatena linhas do <street> quando vier como <street><item>...</item>...</street> */
+function extractStreet(blockXml: string): string | null {
+  const streetBlock = extractBlocks(blockXml, "street")[0];
+  if (!streetBlock) return extractXmlValue(blockXml, "street");
+
+  const items = extractBlocks(streetBlock, "item");
+  if (items.length) {
+    const lines = items
+      .map((it) => it.replace(/<\/?item[^>]*>/gi, "").trim())
+      .filter(Boolean);
+    return lines.join(" ");
+  }
+  const raw = streetBlock.replace(/<\/?[^>]+>/g, "").trim();
+  return raw || null;
 }
 
 /** ─────────── salesOrderInfo (SOAP V2) ─────────── */
@@ -103,9 +129,47 @@ async function salesOrderInfo(sessionId: string, orderIncrementId: string) {
   return resp;
 }
 
-/** Parse básico do salesOrderEntity + items */
+/** ─────────── Parse completo do salesOrderInfo ─────────── */
 function parseSalesOrder(xml: string) {
   const get = (tag: string) => extractXmlValue(xml, tag);
+
+  // Blocos de endereço
+  const billingBlock = extractBlocks(xml, "billing_address")[0] || "";
+  const shippingBlock = extractBlocks(xml, "shipping_address")[0] || "";
+
+  // Preferir os campos dentro dos blocos; fallback para variantes "flattened"
+  const billing_firstname =
+    extractXmlValue(billingBlock, "firstname") || get("billing_firstname");
+  const billing_lastname =
+    extractXmlValue(billingBlock, "lastname") || get("billing_lastname");
+  const billing_city =
+    extractXmlValue(billingBlock, "city") || get("billing_city");
+  const billing_country_id =
+    extractXmlValue(billingBlock, "country_id") || get("billing_country_id");
+  const billing_postcode =
+    extractXmlValue(billingBlock, "postcode") || get("billing_postcode");
+  const billing_region =
+    extractXmlValue(billingBlock, "region") || get("billing_region");
+  const billing_telephone =
+    extractXmlValue(billingBlock, "telephone") || get("billing_telephone");
+  const billing_street = extractStreet(billingBlock) || get("billing_street");
+
+  const shipping_firstname =
+    extractXmlValue(shippingBlock, "firstname") || get("shipping_firstname");
+  const shipping_lastname =
+    extractXmlValue(shippingBlock, "lastname") || get("shipping_lastname");
+  const shipping_city =
+    extractXmlValue(shippingBlock, "city") || get("shipping_city");
+  const shipping_country_id =
+    extractXmlValue(shippingBlock, "country_id") || get("shipping_country_id");
+  const shipping_postcode =
+    extractXmlValue(shippingBlock, "postcode") || get("shipping_postcode");
+  const shipping_region =
+    extractXmlValue(shippingBlock, "region") || get("shipping_region");
+  const shipping_telephone =
+    extractXmlValue(shippingBlock, "telephone") || get("shipping_telephone");
+  const shipping_street =
+    extractStreet(shippingBlock) || get("shipping_street");
 
   const header = {
     increment_id: get("increment_id") || "",
@@ -137,23 +201,24 @@ function parseSalesOrder(xml: string) {
     customer_firstname: get("customer_firstname") || "",
     customer_lastname: get("customer_lastname") || "",
 
-    billing_firstname: get("billing_firstname"),
-    billing_lastname: get("billing_lastname"),
-    shipping_firstname: get("shipping_firstname"),
-    shipping_lastname: get("shipping_lastname"),
+    // Endereços (dos blocos, com fallback)
+    billing_firstname,
+    billing_lastname,
+    billing_city,
+    billing_country_id,
+    billing_postcode,
+    billing_region,
+    billing_street,
+    billing_telephone,
 
-    billing_city: get("billing_city"),
-    billing_country_id: get("billing_country_id"),
-    billing_postcode: get("billing_postcode"),
-    billing_region: get("billing_region"),
-    billing_street: get("billing_street"),
-    billing_telephone: get("billing_telephone"),
-    shipping_city: get("shipping_city"),
-    shipping_country_id: get("shipping_country_id"),
-    shipping_postcode: get("shipping_postcode"),
-    shipping_region: get("shipping_region"),
-    shipping_street: get("shipping_street"),
-    shipping_telephone: get("shipping_telephone"),
+    shipping_firstname,
+    shipping_lastname,
+    shipping_city,
+    shipping_country_id,
+    shipping_postcode,
+    shipping_region,
+    shipping_street,
+    shipping_telephone,
 
     shipping_method: get("shipping_method"),
     shipping_description: get("shipping_description"),
@@ -161,7 +226,8 @@ function parseSalesOrder(xml: string) {
     state: get("state"),
   };
 
-  const itemsContainer = extractBlocks(xml, "items")[0] || xml; // fallback
+  // Itens
+  const itemsContainer = extractBlocks(xml, "items")[0] || xml;
   const rawItems = extractBlocks(itemsContainer, "item");
   const items = rawItems.map((it) => ({
     item_id: extractXmlValue(it, "item_id") || "",
@@ -197,15 +263,15 @@ const toNum = (v?: string | null, def = 0) =>
 /** ─────────── MAPA: Magento status -> Prisma enum ─────────── */
 function toPrismaOrderStatus(s?: string | null): OrderStatus | undefined {
   if (!s) return undefined;
-  // normaliza: minusculas/underscores do Magento -> UPPER_CASE
-  const normalized = s.trim().toUpperCase().replace(/[^A-Z0-9]/g, "_");
-  // bate direto no enum gerado pelo Prisma (runtime)
+  const normalized = s
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "_");
   if ((OrderStatus as any)[normalized]) {
     return (OrderStatus as any)[normalized] as OrderStatus;
   }
-  // alias comuns
   if (normalized === "CANCELLED") return (OrderStatus as any)["CANCELED"];
-  return undefined; // se não casar, não atualiza o campo
+  return undefined;
 }
 
 /** ─────────── Persistência (Order + OrderItem) ─────────── */
@@ -287,9 +353,7 @@ async function upsertOrderAndItems(
       shippingMethod: parsed.header.shipping_method ?? undefined,
       shippingDescription: parsed.header.shipping_description ?? undefined,
 
-      // 🔧 aqui estava o erro: converte para o enum do Prisma
       status: toPrismaOrderStatus(parsed.header.status),
-
       state: parsed.header.state ?? undefined,
 
       detailsFetched: true,
@@ -426,23 +490,13 @@ export async function syncAllOrderInfos(
     pauseMsBetweenBatches?: number;
   } = {}
 ) {
-  const {
-    onlyMissing = true,
-    limit = 200,
-    concurrency = 5,
-    pauseMsBetweenBatches = 300,
-  } = options;
-
-  console.log(
-    `[orders:info] starting… onlyMissing=${onlyMissing} limit=${limit} concurrency=${concurrency}`
-  );
+  const { limit = 200, concurrency = 5, pauseMsBetweenBatches = 300 } = options;
 
   const sessionId = await getMagentoSession();
   console.log(`[orders:info] SOAP session acquired.`);
 
-  const where = onlyMissing ? { detailsFetched: false } : {};
+  // Se quisesse onlyMissing, poderia filtrar por detailsFetched=false aqui.
   const orders = await prisma.order.findMany({
-    where,
     select: { incrementId: true },
     orderBy: { createdAt: "desc" },
     take: limit,
@@ -483,7 +537,7 @@ export async function syncAllOrderInfos(
       })
     );
 
-  if (i + concurrency < orders.length && pauseMsBetweenBatches > 0) {
+    if (i + concurrency < orders.length && pauseMsBetweenBatches > 0) {
       await sleep(pauseMsBetweenBatches);
     }
   }

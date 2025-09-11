@@ -1,8 +1,0 @@
-# env
-.env
-
-# dependencies
-/node_modules
-
-# build output
-/dist
