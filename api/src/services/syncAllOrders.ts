@@ -237,11 +237,17 @@ async function syncAllOrdersToDatabase(orders: OrderEntity[]) {
   return saved;
 }
 
-function mapOrderStatus(status: string): "PENDING" | "PROCESSING" | "COMPLETE" {
-  const map: Record<string, "PENDING" | "PROCESSING" | "COMPLETE"> = {
+function mapOrderStatus(
+  status: string
+): "PENDING" | "PROCESSING" | "COMPLETE" | "EM_PRODUCAO" {
+  const map: Record<
+    string,
+    "PENDING" | "PROCESSING" | "COMPLETE" | "EM_PRODUCAO"
+  > = {
     pending: "PENDING",
     processing: "PROCESSING",
     complete: "COMPLETE",
+    em_producao: "EM_PRODUCAO",
   };
   return map[status.toLowerCase()] || "PENDING";
 }

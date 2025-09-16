@@ -174,53 +174,6 @@ router.get("/orders/sync-all", async (req, res) => {
   }
 });
 
-router.get("/orders/sync-all", async (req, res) => {
-  try {
-    const limit = req.query.limit ? parseInt(String(req.query.limit)) : 50;
-    const onlyMissing = req.query.onlyMissing !== "false";
-
-    const orders = await prisma.order.findMany({
-      where: onlyMissing ? { detailsFetched: false } : {},
-      take: limit,
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (orders.length === 0) {
-      return res.json({
-        success: true,
-        message: "Nenhum pedido para atualizar",
-        updated: 0,
-      });
-    }
-
-    let updated = 0;
-    const errors: any[] = [];
-
-    for (const order of orders) {
-      try {
-        const result = await updateOrderFromMagento(order.incrementId);
-        if (result?.ok) updated++;
-      } catch (e: any) {
-        errors.push({
-          incrementId: order.incrementId,
-          error: e?.message || String(e),
-        });
-      }
-    }
-
-    return res.json({
-      success: errors.length === 0,
-      total: orders.length,
-      updated,
-      errors,
-    });
-  } catch (e: any) {
-    console.error("[orders/sync-all] UNCAUGHT:", e);
-    return res
-      .status(500)
-      .json({ success: false, error: e?.message || "internal" });
-  }
-});
 router.post("/customers/sync-all-full", async (_req, res) => {
   try {
     await syncAllCustomersJob();

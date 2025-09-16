@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 const app = express();
 app.use(express.json());
 
-const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN ?? "";
+const INTERNAL_TOKEN = process.env.INTERNAL_TOKEN ?? "wefuvniqwennj";
 
 app.use((req, res, next) => {
   const token = req.header("x-internal-token");
@@ -19,7 +19,7 @@ app.get("/health", (_req, res) => res.json({ ok: true }));
 // 🔹 Rotas Magento (prefixo interno)
 app.use("/internal/magento", magentoRouter);
 
-const port = Number(process.env.PORT ?? 3000);
+const port = Number(process.env.PORT ?? 3005);
 app.listen(port, () =>
   console.log(`[api] running at http://localhost:${port}`)
 );

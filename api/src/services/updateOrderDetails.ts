@@ -82,6 +82,8 @@ function mapMagentoStatusToPrisma(status?: string): any {
       return "PENDING";
     case "PROCESSING":
       return "PROCESSING";
+    case "EM_PRODUCAO":
+      return "EM_PRODUCAO";
     case "SHIPPED":
       return "SHIPPED";
     case "COMPLETE":

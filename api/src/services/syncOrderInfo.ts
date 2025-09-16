@@ -1,4 +1,5 @@
-import { PrismaClient, OrderStatus } from "@prisma/client";
+import { PrismaClient, orders_status } from "@prisma/client";
+console.log("orders_status enum:", orders_status);
 
 const prisma = new PrismaClient();
 
@@ -261,18 +262,51 @@ const toNum = (v?: string | null, def = 0) =>
   v != null && v !== "" ? Number(v) : def;
 
 /** ─────────── MAPA: Magento status -> Prisma enum ─────────── */
-function toPrismaOrderStatus(s?: string | null): OrderStatus | undefined {
+const statusMap: Record<string, orders_status> = {
+  PENDING: orders_status.PENDING,
+  PROCESSING: orders_status.PROCESSING,
+  SHIPPED: orders_status.SHIPPED,
+  COMPLETE: orders_status.COMPLETE,
+  CANCELED: orders_status.CANCELED,
+  CANCELLED: orders_status.CANCELED, // alias
+  CLOSED: orders_status.CLOSED,
+  REFUNDED: orders_status.REFUNDED,
+  HOLDED: orders_status.HOLDED,
+  PAYMENT_REVIEW: orders_status.PAYMENT_REVIEW,
+  EM_PRODUCAO: orders_status.EM_PRODUCAO,
+};
+
+function toPrismaOrderStatus(s?: string | null): orders_status | undefined {
   if (!s) return undefined;
   const normalized = s
     .trim()
     .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "_");
-  if ((OrderStatus as any)[normalized]) {
-    return (OrderStatus as any)[normalized] as OrderStatus;
-  }
-  if (normalized === "CANCELLED") return (OrderStatus as any)["CANCELED"];
-  return undefined;
+    .replace(/[^A-Z0-9_]/g, "_");
+  const mapped = statusMap[normalized];
+  console.log(
+    "Magento status:",
+    s,
+    "→ normalized:",
+    normalized,
+    "→ Prisma:",
+    mapped
+  );
+  return mapped;
 }
+
+// /** ─────────── MAPA: Magento status -> Prisma enum ─────────── */
+// function toPrismaOrderStatus(s?: string | null): orders_status | undefined {
+//   if (!s) return undefined;
+//   const normalized = s
+//     .trim()
+//     .toUpperCase()
+//     .replace(/[^A-Z0-9]/g, "_");
+//   if ((orders_status as any)[normalized]) {
+//     return (orders_status as any)[normalized] as orders_status;
+//   }
+//   if (normalized === "CANCELLED") return (orders_status as any)["CANCELED"];
+//   return undefined;
+// }
 
 /** ─────────── Persistência (Order + OrderItem) ─────────── */
 async function upsertOrderAndItems(
